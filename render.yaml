@@ -29,6 +29,7 @@ services:
     region: oregon            # change to your preferred region
     healthCheckPath: /
     restartPolicy: on-failure
+    startCommand: npm run start
     envVars:
       - key: NODE_ENV
         value: production
