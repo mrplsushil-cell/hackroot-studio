@@ -175,7 +175,7 @@ services:
   # ---------------------------------------------------------------------------
   # PostgreSQL 16 (private service, persistent disk)
   # ---------------------------------------------------------------------------
-  - type: private-service
+  - type: pserv
     name: hackroot-postgres
     runtime: docker
     image: postgres:16-alpine
@@ -198,7 +198,7 @@ services:
   # ---------------------------------------------------------------------------
   # Redis 7 (private service, Celery broker + results)
   # ---------------------------------------------------------------------------
-  - type: private-service
+  - type: pserv
     name: hackroot-redis
     runtime: docker
     image: redis:7-alpine
