@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 8 11 20;
+  --bg-soft: 15 19 32;
+  --bg-elev: 27 32 48;
+  --fg: 247 248 250;
+  --fg-soft: 188 196 209;
+  --border: 44 52 69;
+  --brand: 47 155 255;
+  --brand-2: 139 92 246;
+}
+
+html, body, #__next {
+  height: 100%;
+  background: rgb(var(--bg));
+  color: rgb(var(--fg));
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+::selection {
+  background: rgba(47,155,255,0.35);
+  color: #fff;
+}
+
+/* Subtle grid background */
+.bg-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.glass {
+  background: rgba(15, 19, 32, 0.6);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.gradient-text {
+  background: linear-gradient(90deg, #2f9bff 0%, #8b5cf6 60%, #ff5e9c 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg
+         bg-gradient-to-r from-brand-500 to-accent-500 px-4 py-2.5
+         text-sm font-semibold text-white shadow-glow
+         transition hover:opacity-95 active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg
+         border border-ink-700 bg-ink-800/60 px-4 py-2.5 text-sm
+         font-medium text-ink-100 hover:bg-ink-700/60 transition;
+}
+
+.btn-ghost {
+  @apply inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm
+         text-ink-200 hover:bg-ink-800/70 transition;
+}
+
+.icon-btn {
+  @apply inline-flex items-center justify-center size-8 rounded-lg text-ink-300
+         hover:bg-brand-500/20 hover:text-white transition;
+}
+
+.card {
+  @apply rounded-xl border border-ink-800/80 bg-ink-900/60 p-5 shadow-glow;
+}
+
+.input, .select, .textarea {
+  @apply w-full rounded-lg border border-ink-700 bg-ink-900/80 px-3 py-2.5
+         text-sm text-ink-50 placeholder:text-ink-400
+         focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20;
+}
+
+.label {
+  @apply text-xs font-medium uppercase tracking-wider text-ink-400;
+}
+
+.chip {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-ink-700
+         bg-ink-800/70 px-2.5 py-1 text-xs font-medium text-ink-200;
+}
+
+.chip-active {
+  @apply border-brand-500/60 bg-brand-500/15 text-brand-200;
+}
+
+.scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }

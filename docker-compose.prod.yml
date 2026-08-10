@@ -1,0 +1,163 @@
+# =============================================================================
+# Hackroot Studio — PRODUCTION docker-compose
+# =============================================================================
+# nginx (TLS reverse proxy, brotli) -> frontend + backend, with postgres,
+# redis, and the celery worker behind it. No --reload, no source bind-mounts
+# (immutable images), per-service healthchecks, Docker json-file log rotation,
+# and an automated Let's Encrypt (certbot) service.
+#
+#   cp production.env.example production.env
+#   # edit production.env (strong secrets, DOMAIN, Razorpay/SMTP if live)
+#   docker compose -f docker-compose.prod.yml --env-file production.env up -d
+#
+# First TLS cert (run once, after DNS points at this host):
+#   docker compose -f docker-compose.prod.yml --env-file production.env run --rm certbot certonly --webroot -w /var/www/certbot --email you@domain.com -d app.domain.com -d api.domain.com --agree-tos
+# Renewal is automatic via the certbot service cron (twice daily).
+# =============================================================================
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "50m"
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hackroot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-hackroot}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hackroot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # In prod do NOT expose 5432 to the host. Internal network only.
+    # ports: ["5432:5432"]   # <- intentionally removed
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    logging: *default-logging
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    env_file: production.env
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hackroot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-hackroot}
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - storage_data:/data/storage
+    command: >-
+      bash -c "alembic upgrade head &&
+               uvicorn app.main:app --host 0.0.0.0 --port 8000
+               --workers 4 --proxy-headers --forwarded-allow-ips='*'"
+    expose:
+      - "8000"   # only reachable inside the docker network / via nginx
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    env_file: production.env
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-hackroot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-hackroot}
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - storage_data:/data/storage
+    command: celery -A app.jobs.celery_app worker --loglevel=info --concurrency=4
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    env_file: production.env
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.hackroot.studio}
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    logging: *default-logging
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - certs:/etc/nginx/certs:ro
+      - certbot_webroot:/var/www/certbot:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Let's Encrypt certificate issuance + automatic renewal (twice daily).
+  certbot:
+    image: certbot/certbot:latest
+    restart: unless-stopped
+    logging: *default-logging
+    volumes:
+      - certs:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;"]
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:
+  certs:
+  certbot_webroot:

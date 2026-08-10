@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.pytest_storage/
+hackroot_test_*/
+
+# Node
+node_modules/
+.next/
+out/
+
+# Env & secrets
+.env
+!.env.example
+production.env
+certs/
+*.pem
+*.key
+.env.local
+
+# Storage / build artifacts
+/data/
+storage/
+*.mp4
+*.wav
