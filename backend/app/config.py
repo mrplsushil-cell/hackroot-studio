@@ -113,9 +113,10 @@ class Settings(BaseSettings):
     def async_database_url(self) -> str:
         """DATABASE_URL normalized for the async SQLAlchemy engine.
 
-        Render (and most managed Postgres) injects a sync `postgres://` URI.
-        The async engine requires the `postgresql+asyncpg://` dialect, so we
-        coerce the scheme here without altering other providers (e.g. sqlite).
+        Render (and most managed Postgres) injects a sync `postgres://` URI via
+        the `fromDatabase` blueprint binding. The async engine requires the
+        `postgresql+asyncpg://` dialect, so we coerce the scheme here without
+        altering other providers (e.g. sqlite).
         """
         url = self.database_url
         if url.startswith("postgres://"):

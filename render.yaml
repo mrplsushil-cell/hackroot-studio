@@ -1,4 +1,30 @@
+# =============================================================================
+# Hackroot Studio - Render Blueprint (current dashboard-compatible schema)
+# -----------------------------------------------------------------------------
+# SERVICES DECLARED (only types the dashboard accepts):
+#   - hackroot-frontend  (web)     Next.js production server
+#   - hackroot-backend   (web)     FastAPI + Uvicorn (Alembic pre-deploy)
+#   - hackroot-worker    (worker)  Celery worker
+#
+# Database & Redis are NOT declared here. The dashboard rejects `type: postgres`
+# and `type: redis` for this account, so the managed Postgres/Redis are created
+# separately on Render, and these services consume them via `fromDatabase` /
+# `fromService` env-var references (bindings, not service declarations).
+#
+# Before deploying:
+#   1. Create a Postgres service named `hackroot-db` on Render (or rename the
+#      `fromDatabase.name` below to match your existing Postgres service).
+#   2. Create a Redis service named `hackroot-redis` (or rename `fromService.name`).
+#   3. Set APP_SECRET_KEY / JWT_SECRET to real values (`openssl rand -hex 32`).
+#   4. Paste the async DB URL into DATABASE_URL if your Postgres connection
+#      string is `postgres://...` and the app needs `postgresql+asyncpg://...`
+#      (see backend/app/config.py - set DATABASE_URL accordingly).
+# =============================================================================
+
 services:
+  # ---------------------------------------------------------------------------
+  # Frontend (Next.js production)
+  # ---------------------------------------------------------------------------
   - type: web
     name: hackroot-frontend
     runtime: docker
@@ -11,6 +37,9 @@ services:
       - key: NEXT_PUBLIC_API_URL
         value: https://hackroot-backend.onrender.com
 
+  # ---------------------------------------------------------------------------
+  # Backend (FastAPI)
+  # ---------------------------------------------------------------------------
   - type: web
     name: hackroot-backend
     runtime: docker
@@ -79,6 +108,9 @@ services:
       - key: CORS_ORIGINS
         value: https://hackroot-frontend.onrender.com,https://hackroot-backend.onrender.com
 
+  # ---------------------------------------------------------------------------
+  # Celery Worker (same backend image)
+  # ---------------------------------------------------------------------------
   - type: worker
     name: hackroot-worker
     runtime: docker
@@ -132,19 +164,3 @@ services:
         value: mock
       - key: TTS_PROVIDER
         value: mock
-
-  - type: postgres
-    name: hackroot-db
-    version: 16
-    databaseName: hackroot
-    user: hackroot
-    password: CHANGE_ME_db_password
-    plan: starter
-    disk:
-      name: hackroot-db-data
-      sizeGB: 10
-
-  - type: redis
-    name: hackroot-redis
-    plan: starter
-    maxmemoryPolicy: allkeys-lru
