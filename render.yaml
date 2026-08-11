@@ -1,63 +1,23 @@
-# =============================================================================
-# Hackroot Studio — Render Blueprint
-# =============================================================================
-# Deploys the full stack via Docker:
-#   - hackroot-frontend  (web)        Next.js 14 production server
-#   - hackroot-backend   (web)        FastAPI + Uvicorn (auto-runs Alembic)
-#   - hackroot-worker    (worker)     Celery worker (Celery >= 4)
-#   - hackroot-postgres  (private)    PostgreSQL 16 (persistent disk)
-#   - hackroot-redis     (private)    Redis 7 (Celery broker/results)
-#
-# Internal service discovery uses the Render service NAME as the hostname
-# (e.g. backend reaches postgres at hackroot-postgres:5432), which avoids the
-# asyncpg + Render-managed-Postgres SSL pitfall and mirrors docker-compose.prod.yml.
-#
-# Before deploying, replace every CHANGE_ME / placeholder value below with real
-# secrets (generate APP_SECRET_KEY / JWT_SECRET with: openssl rand -hex 32).
-# In Render, these become editable environment variables after the first deploy.
-# =============================================================================
-
 services:
-  # ---------------------------------------------------------------------------
-  # Frontend (Next.js)
-  # ---------------------------------------------------------------------------
   - type: web
     name: hackroot-frontend
     runtime: docker
     dockerfilePath: ./frontend/Dockerfile
-    plan: starter
-    region: oregon            # change to your preferred region
     healthCheckPath: /
-    restartPolicy: on-failure
     startCommand: npm run start
     envVars:
       - key: NODE_ENV
         value: production
-      # Public base URL of the backend API. Update to your backend's URL
-      # (default Render domain shown; set a custom domain in the dashboard).
       - key: NEXT_PUBLIC_API_URL
         value: https://hackroot-backend.onrender.com
-      # If you use Render-managed Postgres instead of the containerized one
-      # below, Render auto-injects DATABASE_URL — remove the manual one there.
 
-  # ---------------------------------------------------------------------------
-  # Backend (FastAPI)
-  # ---------------------------------------------------------------------------
   - type: web
     name: hackroot-backend
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
-    plan: starter
-    region: oregon
     healthCheckPath: /health
-    restartPolicy: on-failure
-    # Run DB migrations before the new version takes traffic (zero-downtime).
     preDeployCommand: alembic upgrade head
-    startCommand: >-
-      uvicorn app.main:app --host 0.0.0.0 --port 8000
-      --workers 4 --proxy-headers --forwarded-allow-ips=*
-    # Persistent disk for generated media + uploaded assets (brand-kit logos,
-    # product images, rendered MP4s/thumbnails). Shared path with the worker.
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --forwarded-allow-ips=*
     disks:
       - name: hackroot-storage
         mountPath: /data/storage
@@ -71,32 +31,39 @@ services:
         value: "false"
       - key: FRONTEND_BASE_URL
         value: https://hackroot-frontend.onrender.com
-      # --- Secrets: replace CHANGE_ME with `openssl rand -hex 32` output ---
       - key: APP_SECRET_KEY
+        sync: false
         value: CHANGE_ME_app_secret_32_byte_hex
-        sync: false
       - key: JWT_SECRET
-        value: CHANGE_ME_jwt_secret_32_byte_hex
         sync: false
+        value: CHANGE_ME_jwt_secret_32_byte_hex
       - key: JWT_ALGORITHM
         value: HS256
       - key: JWT_EXPIRES_MINUTES
         value: "1440"
-      # --- Database (internal service name as host) ---
       - key: DATABASE_URL
-        value: postgresql+asyncpg://hackroot:CHANGE_ME_db_password@hackroot-postgres:5432/hackroot
-        sync: false
-      # --- Redis / Celery (internal service name as host) ---
+        fromDatabase:
+          name: hackroot-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: hackroot-redis
+          type: redis
+          property: connectionString
       - key: CELERY_BROKER_URL
-        value: redis://hackroot-redis:6379/1
+        fromService:
+          name: hackroot-redis
+          type: redis
+          property: connectionString
       - key: CELERY_RESULT_BACKEND
-        value: redis://hackroot-redis:6379/2
-      # --- Storage (local filesystem on the persistent disk) ---
+        fromService:
+          name: hackroot-redis
+          type: redis
+          property: connectionString
       - key: STORAGE_BACKEND
         value: local
       - key: STORAGE_LOCAL_ROOT
         value: /data/storage
-      # --- AI providers (default to mock; set keys to go live) ---
       - key: LLM_PROVIDER
         value: mock
       - key: IMAGE_PROVIDER
@@ -107,34 +74,16 @@ services:
         value: mock
       - key: TTS_PROVIDER
         value: mock
-      # --- Payments (Razorpay, optional — mock when empty) ---
-      - key: RAZORPAY_KEY_ID
-        value: ""
-        sync: false
-      - key: RAZORPAY_KEY_SECRET
-        value: ""
-        sync: false
-      - key: RAZORPAY_WEBHOOK_SECRET
-        value: ""
-        sync: false
-      # --- Email (optional — mock when SMTP_* empty) ---
       - key: EMAIL_PROVIDER
         value: mock
-      # --- CORS (comma-separated origins the frontend is served from) ---
       - key: CORS_ORIGINS
         value: https://hackroot-frontend.onrender.com,https://hackroot-backend.onrender.com
 
-  # ---------------------------------------------------------------------------
-  # Celery Worker
-  # ---------------------------------------------------------------------------
   - type: worker
     name: hackroot-worker
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
-    plan: starter
-    region: oregon
-    restartPolicy: on-failure
-    startCommand: celery -A app.jobs.celery_app worker --loglevel=info --concurrency=4
+    startCommand: celery -A app.jobs.celery_app worker --loglevel=info
     disks:
       - name: hackroot-worker-storage
         mountPath: /data/storage
@@ -145,18 +94,30 @@ services:
       - key: APP_DEBUG
         value: "false"
       - key: APP_SECRET_KEY
+        sync: false
         value: CHANGE_ME_app_secret_32_byte_hex
-        sync: false
       - key: JWT_SECRET
+        sync: false
         value: CHANGE_ME_jwt_secret_32_byte_hex
-        sync: false
       - key: DATABASE_URL
-        value: postgresql+asyncpg://hackroot:CHANGE_ME_db_password@hackroot-postgres:5432/hackroot
-        sync: false
+        fromDatabase:
+          name: hackroot-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          name: hackroot-redis
+          type: redis
+          property: connectionString
       - key: CELERY_BROKER_URL
-        value: redis://hackroot-redis:6379/1
+        fromService:
+          name: hackroot-redis
+          type: redis
+          property: connectionString
       - key: CELERY_RESULT_BACKEND
-        value: redis://hackroot-redis:6379/2
+        fromService:
+          name: hackroot-redis
+          type: redis
+          property: connectionString
       - key: STORAGE_BACKEND
         value: local
       - key: STORAGE_LOCAL_ROOT
@@ -172,36 +133,18 @@ services:
       - key: TTS_PROVIDER
         value: mock
 
-  # ---------------------------------------------------------------------------
-  # PostgreSQL 16 (private service, persistent disk)
-  # ---------------------------------------------------------------------------
-  - type: pserv
-    name: hackroot-postgres
-    runtime: docker
-    image: postgres:16-alpine
+  - type: postgres
+    name: hackroot-db
+    version: 16
+    databaseName: hackroot
+    user: hackroot
+    password: CHANGE_ME_db_password
     plan: starter
-    region: oregon
-    dockerCommand: postgres
-    disks:
-      - name: hackroot-postgres-data
-        mountPath: /var/lib/postgresql/data
-        sizeGB: 10
-    envVars:
-      - key: POSTGRES_USER
-        value: hackroot
-      - key: POSTGRES_PASSWORD
-        value: CHANGE_ME_db_password
-        sync: false
-      - key: POSTGRES_DB
-        value: hackroot
+    disk:
+      name: hackroot-db-data
+      sizeGB: 10
 
-  # ---------------------------------------------------------------------------
-  # Redis 7 (private service, Celery broker + results)
-  # ---------------------------------------------------------------------------
-  - type: pserv
+  - type: redis
     name: hackroot-redis
-    runtime: docker
-    image: redis:7-alpine
     plan: starter
-    region: oregon
-    dockerCommand: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    maxmemoryPolicy: allkeys-lru
