@@ -47,10 +47,6 @@ services:
     healthCheckPath: /health
     preDeployCommand: alembic upgrade head
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --proxy-headers --forwarded-allow-ips=*
-    disks:
-      - name: hackroot-storage
-        mountPath: /data/storage
-        sizeGB: 10
     envVars:
       - key: APP_ENV
         value: production
@@ -116,10 +112,6 @@ services:
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     startCommand: celery -A app.jobs.celery_app worker --loglevel=info
-    disks:
-      - name: hackroot-worker-storage
-        mountPath: /data/storage
-        sizeGB: 10
     envVars:
       - key: APP_ENV
         value: production
